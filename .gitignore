@@ -23,6 +23,7 @@ test-*.php
 debug.php
 *.tmp
 *.bak
+config_pagos.json
 
 # ==========================================
 # SISTEMA OPERATIVO
