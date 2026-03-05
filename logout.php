@@ -23,4 +23,4 @@ cerrar_sesion($pdo);
 mensaje_info('Sesión cerrada correctamente. ¡Hasta pronto!');
 
 // Redirigir al login
-redireccionar('index.php');
+redireccionar('index');

@@ -1,0 +1,172 @@
+# ============================================================================
+# .HTACCESS - SISTEMA CLÍNICO DR. BYRON
+# Configuración de Apache para URLs limpias y seguridad
+# ============================================================================
+
+# Habilitar motor de reescritura
+RewriteEngine On
+
+# ============================================================================
+# CONFIGURACIÓN BASE
+# ============================================================================
+
+# Establecer la ruta base del proyecto
+# Si el proyecto está en la raíz del dominio, usar:
+# RewriteBase /
+# Si está en un subdirectorio, usar:
+RewriteBase /clinica-dr-byron/
+
+# Establecer página de error personalizada (opcional)
+# ErrorDocument 404 /clinica-dr-byron/404.php
+
+# ============================================================================
+# SEGURIDAD
+# ============================================================================
+
+# Prevenir listado de directorios
+Options -Indexes
+
+# Prevenir acceso a archivos sensibles
+<FilesMatch "^(config\.php|\.env|\.git|composer\.json|composer\.lock|package\.json)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Proteger archivos de configuración y logs
+<FilesMatch "\.(log|json|md)$">
+    Order Allow,Deny
+    Deny from all
+    <FilesMatch "^(config_pagos\.json)$">
+        Allow from all
+    </FilesMatch>
+</FilesMatch>
+
+# Bloquear acceso directo a includes
+RewriteRule ^includes/ - [F,L]
+RewriteRule ^models/ - [F,L]
+RewriteRule ^database/ - [F,L]
+RewriteRule ^logs/ - [F,L]
+
+# ============================================================================
+# FORZAR HTTPS (DESCOMENTAR EN PRODUCCIÓN)
+# ============================================================================
+
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ============================================================================
+# URLs LIMPIAS - ELIMINAR .php
+# ============================================================================
+
+# Si el archivo existe físicamente, dejarlo pasar
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Archivos en raíz del proyecto (dashboard, logout, etc.)
+RewriteRule ^([a-zA-Z0-9_-]+)$ $1.php [L]
+
+# Archivos en módulos (pacientes, citas, consultas, etc.)
+# Formato: /modulo/archivo → /modules/modulo/archivo.php
+RewriteRule ^([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)$ modules/$1/$2.php [L]
+
+# Archivos en submódulos
+# Formato: /modulo/submódulo/archivo → /modules/modulo/submódulo/archivo.php
+RewriteRule ^([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)$ modules/$1/$2/$3.php [L]
+
+# ============================================================================
+# REDIRECCIONES ESPECIALES
+# ============================================================================
+
+# Redirigir / al index.php (login)
+DirectoryIndex index.php
+
+# Si alguien intenta acceder a /index, redirigir a /
+RewriteRule ^index$ / [R=301,L]
+
+# ============================================================================
+# CACHÉ Y RENDIMIENTO
+# ============================================================================
+
+# Habilitar compresión GZIP
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Configurar caché del navegador
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # Imágenes
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+    
+    # CSS y JavaScript
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    
+    # Fuentes
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+    ExpiresByType application/font-woff2 "access plus 1 year"
+    
+    # HTML (no cachear)
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# ============================================================================
+# SEGURIDAD ADICIONAL
+# ============================================================================
+
+# Prevenir inyección de código en URLs
+RewriteCond %{QUERY_STRING} (<|%3C).*script.*(>|%3E) [NC,OR]
+RewriteCond %{QUERY_STRING} GLOBALS(=|[|%[0-9A-Z]{0,2}) [OR]
+RewriteCond %{QUERY_STRING} _REQUEST(=|[|%[0-9A-Z]{0,2})
+RewriteRule .* - [F,L]
+
+# Headers de seguridad
+<IfModule mod_headers.c>
+    # Prevenir XSS
+    Header set X-XSS-Protection "1; mode=block"
+    
+    # Prevenir clickjacking
+    Header always append X-Frame-Options SAMEORIGIN
+    
+    # Prevenir MIME sniffing
+    Header set X-Content-Type-Options nosniff
+    
+    # Referrer policy
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Content Security Policy (ajustar según necesidades)
+    # Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+</IfModule>
+
+# ============================================================================
+# CONFIGURACIÓN PHP (si mod_php está habilitado)
+# ============================================================================
+
+<IfModule mod_php.c>
+    # Limitar tamaño de subida
+    php_value upload_max_filesize 10M
+    php_value post_max_size 10M
+    
+    # Tiempo de ejecución
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    
+    # Memoria
+    php_value memory_limit 256M
+    
+    # Zona horaria
+    php_value date.timezone "America/Guatemala"
+</IfModule>
+
+# ============================================================================
+# FIN DE CONFIGURACIÓN
+# ============================================================================

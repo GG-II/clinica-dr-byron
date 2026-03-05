@@ -18,7 +18,7 @@ require_once INCLUDES_PATH . 'auth.php';
 
 // Si ya está logueado, redirigir al dashboard
 if (isset($_SESSION['usuario_id'])) {
-    redireccionar('dashboard.php');
+    redireccionar('dashboard');
 }
 
 // Variables para el formulario
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             iniciar_sesion_usuario($usuario, $pdo);
             
             // Redirigir al dashboard o a la página que intentaba acceder
-            $redirect = $_SESSION['redirect_after_login'] ?? 'dashboard.php';
+            $redirect = $_SESSION['redirect_after_login'] ?? 'dashboard';
             unset($_SESSION['redirect_after_login']);
             redireccionar($redirect);
         } else {
