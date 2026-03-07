@@ -334,23 +334,68 @@ function redireccionar($url) {
 }
 
 /**
- * Registra un mensaje en el log de errores
+ * Registra un mensaje en el log del sistema
  * 
  * @param string $mensaje Mensaje a registrar
- * @param string $tipo Tipo de log (info, warning, error)
+ * @param string $nivel Nivel: info, warning, error, debug
+ * @return bool True si se escribió correctamente
  */
-function log_mensaje($mensaje, $tipo = 'info') {
-    $fecha = date('Y-m-d H:i:s');
-    $log_file = LOGS_PATH . 'sistema.log';
-    $tipo_upper = strtoupper($tipo);
-    $linea = "[{$fecha}] [{$tipo_upper}] {$mensaje}" . PHP_EOL;
+function log_mensaje($mensaje, $nivel = 'info') {
+    // Ruta absoluta del archivo de log
+    $logs_dir = __DIR__ . '/../logs/';
+    $log_file = $logs_dir . 'sistema.log';
     
-    // Crear carpeta de logs si no existe
-    if (!file_exists(LOGS_PATH)) {
-        mkdir(LOGS_PATH, 0755, true);
+    // Crear directorio si no existe
+    if (!is_dir($logs_dir)) {
+        if (!mkdir($logs_dir, 0755, true)) {
+            // Si falla crear directorio, escribir en error_log de PHP
+            error_log("ERROR: No se pudo crear directorio de logs: {$logs_dir}");
+            return false;
+        }
     }
     
-    file_put_contents($log_file, $linea, FILE_APPEND);
+    // Crear archivo si no existe
+    if (!file_exists($log_file)) {
+        if (!touch($log_file)) {
+            error_log("ERROR: No se pudo crear archivo de log: {$log_file}");
+            return false;
+        }
+        chmod($log_file, 0666);
+    }
+    
+    // Verificar que sea escribible
+    if (!is_writable($log_file)) {
+        error_log("ERROR: Archivo de log no es escribible: {$log_file}");
+        chmod($log_file, 0666); // Intentar dar permisos
+    }
+    
+    // Formato del mensaje
+    $fecha = date('Y-m-d H:i:s');
+    $nivel_upper = strtoupper($nivel);
+    $usuario = $_SESSION['usuario_nombre'] ?? 'SISTEMA';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+    
+    $linea = "[{$fecha}] [{$nivel_upper}] [{$usuario}] [{$ip}] {$mensaje}" . PHP_EOL;
+    
+    // Intentar escribir
+    $resultado = file_put_contents($log_file, $linea, FILE_APPEND | LOCK_EX);
+    
+    // Si falla, escribir en error_log de PHP también
+    if ($resultado === false) {
+        error_log("FALLO AL ESCRIBIR LOG: {$mensaje}");
+        error_log("Ruta intentada: {$log_file}");
+        error_log("Directorio existe: " . (is_dir($logs_dir) ? 'SÍ' : 'NO'));
+        error_log("Archivo existe: " . (file_exists($log_file) ? 'SÍ' : 'NO'));
+        error_log("Es escribible: " . (is_writable($log_file) ? 'SÍ' : 'NO'));
+        return false;
+    }
+    
+    // En desarrollo, mostrar errores también en error_log de PHP
+    if (defined('ENVIRONMENT') && ENVIRONMENT === 'development' && $nivel === 'error') {
+        error_log("APP ERROR: {$mensaje}");
+    }
+    
+    return true;
 }
 
 /**
@@ -424,68 +469,98 @@ function formatear_bytes($bytes, $precision = 2) {
 /**
  * Guarda un mensaje de éxito en la sesión
  * 
- * @param string $mensaje Mensaje a mostrar
+ * @param string $texto Mensaje a mostrar
  */
-function mensaje_exito($mensaje) {
-    $_SESSION['mensaje_exito'] = $mensaje;
+function mensaje_exito($texto) {
+    $_SESSION['mensaje'] = [
+        'tipo' => 'exito',
+        'texto' => $texto
+    ];
 }
 
 /**
  * Guarda un mensaje de error en la sesión
  * 
- * @param string $mensaje Mensaje a mostrar
+ * @param string $texto Mensaje a mostrar
  */
-function mensaje_error($mensaje) {
-    $_SESSION['mensaje_error'] = $mensaje;
+function mensaje_error($texto) {
+    $_SESSION['mensaje'] = [
+        'tipo' => 'error',
+        'texto' => $texto
+    ];
 }
 
 /**
  * Guarda un mensaje de advertencia en la sesión
  * 
- * @param string $mensaje Mensaje a mostrar
+ * @param string $texto Mensaje a mostrar
  */
-function mensaje_advertencia($mensaje) {
-    $_SESSION['mensaje_advertencia'] = $mensaje;
+function mensaje_advertencia($texto) {
+    $_SESSION['mensaje'] = [
+        'tipo' => 'warning',
+        'texto' => $texto
+    ];
 }
 
 /**
  * Guarda un mensaje informativo en la sesión
  * 
- * @param string $mensaje Mensaje a mostrar
+ * @param string $texto Mensaje a mostrar
  */
-function mensaje_info($mensaje) {
-    $_SESSION['mensaje_info'] = $mensaje;
+function mensaje_info($texto) {
+    $_SESSION['mensaje'] = [
+        'tipo' => 'info',
+        'texto' => $texto
+    ];
 }
 
 /**
- * Muestra los mensajes guardados en sesión (llamar en header.php)
+ * Muestra los mensajes flash del sistema
  * 
  * @return string HTML con los mensajes
  */
 function mostrar_mensajes() {
-    $html = '';
-    
-    $tipos = [
-        'mensaje_exito' => ['tipo' => 'success', 'icono' => '✓'],
-        'mensaje_error' => ['tipo' => 'danger', 'icono' => '✗'],
-        'mensaje_advertencia' => ['tipo' => 'warning', 'icono' => '⚠'],
-        'mensaje_info' => ['tipo' => 'info', 'icono' => 'ℹ']
-    ];
-    
-    foreach ($tipos as $clave => $config) {
-        if (isset($_SESSION[$clave])) {
-            $html .= sprintf(
-                '<div class="alert alert-%s alert-dismissible fade show" role="alert">
-                    <strong>%s</strong> %s
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>',
-                $config['tipo'],
-                $config['icono'],
-                $_SESSION[$clave]
-            );
-            unset($_SESSION[$clave]);
-        }
+    if (!isset($_SESSION['mensaje'])) {
+        return '';
     }
+    
+    $tipo = $_SESSION['mensaje']['tipo'];
+    $texto = $_SESSION['mensaje']['texto'];
+    
+    // Determinar clase Bootstrap según tipo
+    $clase_bootstrap = 'alert-info';
+    $icono = 'bi-info-circle-fill';
+    
+    switch ($tipo) {
+        case 'exito':
+        case 'success':
+            $clase_bootstrap = 'alert-success';
+            $icono = 'bi-check-circle-fill';
+            break;
+        case 'error':
+        case 'danger':
+            $clase_bootstrap = 'alert-danger';
+            $icono = 'bi-exclamation-triangle-fill';
+            break;
+        case 'warning':
+        case 'advertencia':
+            $clase_bootstrap = 'alert-warning';
+            $icono = 'bi-exclamation-circle-fill';
+            break;
+        case 'info':
+            $clase_bootstrap = 'alert-info';
+            $icono = 'bi-info-circle-fill';
+            break;
+    }
+    
+    $html = "<div class='alert {$clase_bootstrap} alert-dismissible fade show' role='alert'>";
+    $html .= "  <i class='bi {$icono} me-2'></i>";
+    $html .= "  <strong>" . e($texto) . "</strong>";
+    $html .= "  <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Close'></button>";
+    $html .= "</div>";
+    
+    // Limpiar mensaje después de mostrarlo
+    unset($_SESSION['mensaje']);
     
     return $html;
 }

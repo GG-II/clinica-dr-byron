@@ -166,13 +166,14 @@ function menu_active($page_or_module) {
                     <span>Inventario</span>
                 </a>
             </li>
-            <?php endif; ?>
+            <?php endif; ?>     
             
-            <!-- Usuarios (solo admin) -->
+            <!-- Usuarios (solo Admin) -->
             <?php if (es_admin()): ?>
-            <li>
-                <a href="<?= BASE_URL ?>modules/usuarios/" class="<?= menu_active('usuarios') ?>">
-                    <i class="bi bi-person-gear"></i>
+            <li class="nav-item">
+                <a class="nav-link <?= strpos($current_page, 'usuarios') !== false ? 'active' : '' ?>" 
+                href="<?= BASE_URL ?>modules/usuarios/index.php">
+                    <i class="bi bi-people"></i>
                     <span>Usuarios</span>
                 </a>
             </li>

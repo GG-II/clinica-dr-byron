@@ -3,71 +3,62 @@
  * MODELO: Usuario
  * Sistema de Gestión Clínica - Clínica Médica de la Mujer
  * 
- * Gestión completa de usuarios del sistema:
- * - CRUD de usuarios
- * - Validación de credenciales
- * - Cambio de contraseñas
- * - Listados y búsquedas
- * 
- * @author Gerbert David García Loaiza - GG-Systems
- * @version 1.0
+ * Funciones para gestionar usuarios del sistema
  */
 
-defined('ACCESS_GRANTED') or die('Acceso denegado');
-
-// ============================================================================
-// FUNCIONES DE LECTURA (READ)
-// ============================================================================
+if (!defined('ACCESS_GRANTED')) {
+    die('Acceso denegado');
+}
 
 /**
- * Obtiene todos los usuarios del sistema
- * 
- * @param PDO $pdo Conexión a BD
- * @param array $filtros Filtros opcionales ['activo' => 1, 'rol' => 'medico']
- * @return array Lista de usuarios
+ * Obtener lista de usuarios con filtros
  */
-function obtener_usuarios($pdo, $filtros = []) {
+function obtener_usuarios($pdo, $filtros = [], $limit = 100, $offset = 0) {
     try {
         $sql = "SELECT id, nombre, email, rol, activo, created_at, updated_at 
                 FROM usuarios 
                 WHERE 1=1";
-        
         $params = [];
         
-        // Filtro por activo
+        // Filtro por búsqueda (nombre o email)
+        if (!empty($filtros['buscar'])) {
+            $sql .= " AND (nombre LIKE ? OR email LIKE ?)";
+            $buscar = '%' . $filtros['buscar'] . '%';
+            $params[] = $buscar;
+            $params[] = $buscar;
+        }
+        
+        // Filtro por rol
+        if (!empty($filtros['rol'])) {
+            $sql .= " AND rol = ?";
+            $params[] = $filtros['rol'];
+        }
+        
+        // Filtro por estado
         if (isset($filtros['activo'])) {
             $sql .= " AND activo = ?";
             $params[] = $filtros['activo'];
         }
         
-        // Filtro por rol
-        if (isset($filtros['rol'])) {
-            $sql .= " AND rol = ?";
-            $params[] = $filtros['rol'];
-        }
-        
-        // Ordenar por nombre
-        $sql .= " ORDER BY nombre ASC";
+        $sql .= " ORDER BY nombre ASC LIMIT ? OFFSET ?";
+        $params[] = $limit;
+        $params[] = $offset;
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         
-        return $stmt->fetchAll();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
         
     } catch (PDOException $e) {
-        log_mensaje("Error al obtener usuarios: " . $e->getMessage(), 'error');
+        error_log("Error en obtener_usuarios: " . $e->getMessage());
         return [];
     }
 }
 
 /**
- * Obtiene un usuario por su ID
- * 
- * @param PDO $pdo Conexión a BD
- * @param int $id ID del usuario
- * @return array|false Datos del usuario o false si no existe
+ * Obtener usuario por ID
  */
-function obtener_usuario_por_id($pdo, $id) {
+function obtener_usuario($pdo, $id) {
     try {
         $stmt = $pdo->prepare("
             SELECT id, nombre, email, rol, activo, created_at, updated_at 
@@ -76,126 +67,28 @@ function obtener_usuario_por_id($pdo, $id) {
         ");
         $stmt->execute([$id]);
         
-        return $stmt->fetch();
+        return $stmt->fetch(PDO::FETCH_ASSOC);
         
     } catch (PDOException $e) {
-        log_mensaje("Error al obtener usuario por ID: " . $e->getMessage(), 'error');
-        return false;
+        error_log("Error en obtener_usuario: " . $e->getMessage());
+        return null;
     }
 }
 
 /**
- * Obtiene un usuario por su email
- * 
- * @param PDO $pdo Conexión a BD
- * @param string $email Email del usuario
- * @return array|false Datos del usuario o false si no existe
- */
-function obtener_usuario_por_email($pdo, $email) {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT id, nombre, email, password, rol, activo, created_at, updated_at 
-            FROM usuarios 
-            WHERE email = ?
-        ");
-        $stmt->execute([$email]);
-        
-        return $stmt->fetch();
-        
-    } catch (PDOException $e) {
-        log_mensaje("Error al obtener usuario por email: " . $e->getMessage(), 'error');
-        return false;
-    }
-}
-
-/**
- * Busca usuarios por nombre o email
- * 
- * @param PDO $pdo Conexión a BD
- * @param string $termino Término de búsqueda
- * @return array Lista de usuarios que coinciden
- */
-function buscar_usuarios($pdo, $termino) {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT id, nombre, email, rol, activo 
-            FROM usuarios 
-            WHERE nombre LIKE ? OR email LIKE ?
-            ORDER BY nombre ASC
-        ");
-        
-        $termino_busqueda = '%' . $termino . '%';
-        $stmt->execute([$termino_busqueda, $termino_busqueda]);
-        
-        return $stmt->fetchAll();
-        
-    } catch (PDOException $e) {
-        log_mensaje("Error al buscar usuarios: " . $e->getMessage(), 'error');
-        return [];
-    }
-}
-
-/**
- * Cuenta el total de usuarios
- * 
- * @param PDO $pdo Conexión a BD
- * @param array $filtros Filtros opcionales
- * @return int Total de usuarios
- */
-function contar_usuarios($pdo, $filtros = []) {
-    try {
-        $sql = "SELECT COUNT(*) FROM usuarios WHERE 1=1";
-        $params = [];
-        
-        if (isset($filtros['activo'])) {
-            $sql .= " AND activo = ?";
-            $params[] = $filtros['activo'];
-        }
-        
-        if (isset($filtros['rol'])) {
-            $sql .= " AND rol = ?";
-            $params[] = $filtros['rol'];
-        }
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        
-        return (int) $stmt->fetchColumn();
-        
-    } catch (PDOException $e) {
-        log_mensaje("Error al contar usuarios: " . $e->getMessage(), 'error');
-        return 0;
-    }
-}
-
-// ============================================================================
-// FUNCIONES DE CREACIÓN (CREATE)
-// ============================================================================
-
-/**
- * Crea un nuevo usuario
- * 
- * @param PDO $pdo Conexión a BD
- * @param array $datos Datos del usuario ['nombre', 'email', 'password', 'rol']
- * @return array Resultado ['success' => bool, 'message' => string, 'id' => int|null]
+ * Crear nuevo usuario
  */
 function crear_usuario($pdo, $datos) {
     try {
-        // Validaciones
-        $validacion = validar_datos_usuario($datos, true);
-        if (!$validacion['success']) {
-            return $validacion;
+        // Verificar si el email ya existe
+        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ?");
+        $stmt->execute([$datos['email']]);
+        
+        if ($stmt->fetch()) {
+            throw new Exception('Este email ya está registrado');
         }
         
-        // Verificar que el email no exista
-        if (email_usuario_existe($pdo, $datos['email'])) {
-            return [
-                'success' => false,
-                'message' => 'El email ya está registrado en el sistema.'
-            ];
-        }
-        
-        // Hashear password
+        // Encriptar password
         $password_hash = password_hash($datos['password'], PASSWORD_BCRYPT);
         
         // Insertar usuario
@@ -204,366 +97,163 @@ function crear_usuario($pdo, $datos) {
             VALUES (?, ?, ?, ?, ?)
         ");
         
-        $activo = isset($datos['activo']) ? $datos['activo'] : ESTADO_ACTIVO;
-        
         $stmt->execute([
             $datos['nombre'],
             $datos['email'],
             $password_hash,
             $datos['rol'],
-            $activo
+            isset($datos['activo']) ? $datos['activo'] : 1
         ]);
         
-        $nuevo_id = $pdo->lastInsertId();
+        $usuario_id = $pdo->lastInsertId();
         
-        // Registrar en auditoría
-        if (isset($_SESSION['usuario_id'])) {
-            registrar_auditoria($pdo, $_SESSION['usuario_id'], 'CREAR', 'usuarios', $nuevo_id);
-        }
+        error_log("Usuario creado exitosamente: ID $usuario_id");
         
-        log_mensaje("Usuario creado: {$datos['nombre']} ({$datos['email']}) - Rol: {$datos['rol']}", 'info');
+        return $usuario_id;
         
-        return [
-            'success' => true,
-            'message' => 'Usuario creado correctamente.',
-            'id' => $nuevo_id
-        ];
-        
-    } catch (PDOException $e) {
-        log_mensaje("Error al crear usuario: " . $e->getMessage(), 'error');
-        return [
-            'success' => false,
-            'message' => 'Error al crear el usuario. Por favor intente nuevamente.'
-        ];
+    } catch (Exception $e) {
+        error_log("Error en crear_usuario: " . $e->getMessage());
+        throw $e;
     }
 }
 
-// ============================================================================
-// FUNCIONES DE ACTUALIZACIÓN (UPDATE)
-// ============================================================================
-
 /**
- * Actualiza los datos de un usuario
- * 
- * @param PDO $pdo Conexión a BD
- * @param int $id ID del usuario
- * @param array $datos Datos a actualizar ['nombre', 'email', 'rol', 'activo']
- * @return array Resultado ['success' => bool, 'message' => string]
+ * Actualizar usuario existente
  */
 function actualizar_usuario($pdo, $id, $datos) {
     try {
-        // Verificar que el usuario existe
-        $usuario_actual = obtener_usuario_por_id($pdo, $id);
-        if (!$usuario_actual) {
-            return [
-                'success' => false,
-                'message' => 'El usuario no existe.'
-            ];
+        // Verificar si el email ya existe en otro usuario
+        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ? AND id != ?");
+        $stmt->execute([$datos['email'], $id]);
+        
+        if ($stmt->fetch()) {
+            throw new Exception('Este email ya está registrado en otro usuario');
         }
         
-        // Validaciones
-        $validacion = validar_datos_usuario($datos, false);
-        if (!$validacion['success']) {
-            return $validacion;
+        // Si se envió nueva contraseña, actualizar también
+        if (!empty($datos['password'])) {
+            $password_hash = password_hash($datos['password'], PASSWORD_BCRYPT);
+            
+            $stmt = $pdo->prepare("
+                UPDATE usuarios 
+                SET nombre = ?, email = ?, password = ?, rol = ?, activo = ? 
+                WHERE id = ?
+            ");
+            
+            $stmt->execute([
+                $datos['nombre'],
+                $datos['email'],
+                $password_hash,
+                $datos['rol'],
+                $datos['activo'],
+                $id
+            ]);
+        } else {
+            // Actualizar sin cambiar contraseña
+            $stmt = $pdo->prepare("
+                UPDATE usuarios 
+                SET nombre = ?, email = ?, rol = ?, activo = ? 
+                WHERE id = ?
+            ");
+            
+            $stmt->execute([
+                $datos['nombre'],
+                $datos['email'],
+                $datos['rol'],
+                $datos['activo'],
+                $id
+            ]);
         }
         
-        // Si cambió el email, verificar que no exista
-        if (isset($datos['email']) && $datos['email'] !== $usuario_actual['email']) {
-            if (email_usuario_existe($pdo, $datos['email'], $id)) {
-                return [
-                    'success' => false,
-                    'message' => 'El email ya está registrado por otro usuario.'
-                ];
-            }
-        }
+        error_log("Usuario actualizado exitosamente: ID $id");
         
-        // Construir query dinámicamente según campos recibidos
-        $campos_actualizar = [];
+        return true;
+        
+    } catch (Exception $e) {
+        error_log("Error en actualizar_usuario: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+/**
+ * Activar/Desactivar usuario (toggle)
+ */
+function cambiar_estado_usuario($pdo, $id, $activo) {
+    try {
+        $stmt = $pdo->prepare("UPDATE usuarios SET activo = ? WHERE id = ?");
+        $stmt->execute([$activo ? 1 : 0, $id]);
+        
+        error_log("Estado de usuario cambiado: ID $id - Activo: " . ($activo ? 'SI' : 'NO'));
+        
+        return true;
+        
+    } catch (PDOException $e) {
+        error_log("Error en cambiar_estado_usuario: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Contar usuarios con filtros
+ */
+function contar_usuarios($pdo, $filtros = []) {
+    try {
+        $sql = "SELECT COUNT(*) FROM usuarios WHERE 1=1";
         $params = [];
         
-        if (isset($datos['nombre'])) {
-            $campos_actualizar[] = "nombre = ?";
-            $params[] = $datos['nombre'];
+        if (!empty($filtros['buscar'])) {
+            $sql .= " AND (nombre LIKE ? OR email LIKE ?)";
+            $buscar = '%' . $filtros['buscar'] . '%';
+            $params[] = $buscar;
+            $params[] = $buscar;
         }
         
-        if (isset($datos['email'])) {
-            $campos_actualizar[] = "email = ?";
-            $params[] = $datos['email'];
+        if (!empty($filtros['rol'])) {
+            $sql .= " AND rol = ?";
+            $params[] = $filtros['rol'];
         }
         
-        if (isset($datos['rol'])) {
-            $campos_actualizar[] = "rol = ?";
-            $params[] = $datos['rol'];
+        if (isset($filtros['activo'])) {
+            $sql .= " AND activo = ?";
+            $params[] = $filtros['activo'];
         }
         
-        if (isset($datos['activo'])) {
-            $campos_actualizar[] = "activo = ?";
-            $params[] = $datos['activo'];
-        }
-        
-        // Si no hay campos para actualizar
-        if (empty($campos_actualizar)) {
-            return [
-                'success' => false,
-                'message' => 'No hay datos para actualizar.'
-            ];
-        }
-        
-        // Agregar ID al final de params
-        $params[] = $id;
-        
-        // Ejecutar actualización
-        $sql = "UPDATE usuarios SET " . implode(', ', $campos_actualizar) . " WHERE id = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         
-        // Registrar en auditoría
-        if (isset($_SESSION['usuario_id'])) {
-            registrar_auditoria($pdo, $_SESSION['usuario_id'], 'EDITAR', 'usuarios', $id);
-        }
-        
-        log_mensaje("Usuario actualizado ID: {$id}", 'info');
-        
-        return [
-            'success' => true,
-            'message' => 'Usuario actualizado correctamente.'
-        ];
+        return $stmt->fetchColumn();
         
     } catch (PDOException $e) {
-        log_mensaje("Error al actualizar usuario: " . $e->getMessage(), 'error');
-        return [
-            'success' => false,
-            'message' => 'Error al actualizar el usuario. Por favor intente nuevamente.'
-        ];
+        error_log("Error en contar_usuarios: " . $e->getMessage());
+        return 0;
     }
 }
 
+
 /**
- * Cambia la contraseña de un usuario
- * 
- * @param PDO $pdo Conexión a BD
- * @param int $id ID del usuario
- * @param string $password_nueva Nueva contraseña en texto plano
- * @param string|null $password_actual Contraseña actual (para validar si el usuario cambia su propia contraseña)
- * @return array Resultado ['success' => bool, 'message' => string]
+ * Verificar si se puede eliminar un usuario
+ * (No eliminar si tiene registros asociados)
  */
-function cambiar_password($pdo, $id, $password_nueva, $password_actual = null) {
+function puede_eliminar_usuario($pdo, $id) {
     try {
-        // Obtener usuario
-        $usuario = obtener_usuario_por_id($pdo, $id);
-        if (!$usuario) {
-            return [
-                'success' => false,
-                'message' => 'El usuario no existe.'
-            ];
-        }
-        
-        // Si se proporcionó contraseña actual, validarla
-        if ($password_actual !== null) {
-            $usuario_completo = obtener_usuario_por_email($pdo, $usuario['email']);
-            if (!password_verify($password_actual, $usuario_completo['password'])) {
-                return [
-                    'success' => false,
-                    'message' => 'La contraseña actual es incorrecta.'
-                ];
-            }
-        }
-        
-        // Validar nueva contraseña
-        if (strlen($password_nueva) < 6) {
-            return [
-                'success' => false,
-                'message' => 'La contraseña debe tener al menos 6 caracteres.'
-            ];
-        }
-        
-        // Hashear nueva contraseña
-        $password_hash = password_hash($password_nueva, PASSWORD_BCRYPT);
-        
-        // Actualizar contraseña
-        $stmt = $pdo->prepare("UPDATE usuarios SET password = ? WHERE id = ?");
-        $stmt->execute([$password_hash, $id]);
-        
-        // Registrar en auditoría
-        if (isset($_SESSION['usuario_id'])) {
-            registrar_auditoria($pdo, $_SESSION['usuario_id'], 'CAMBIO_PASSWORD', 'usuarios', $id);
-        }
-        
-        log_mensaje("Contraseña cambiada para usuario ID: {$id}", 'info');
-        
-        return [
-            'success' => true,
-            'message' => 'Contraseña actualizada correctamente.'
-        ];
-        
-    } catch (PDOException $e) {
-        log_mensaje("Error al cambiar contraseña: " . $e->getMessage(), 'error');
-        return [
-            'success' => false,
-            'message' => 'Error al cambiar la contraseña. Por favor intente nuevamente.'
-        ];
-    }
-}
-
-/**
- * Activa un usuario
- * 
- * @param PDO $pdo Conexión a BD
- * @param int $id ID del usuario
- * @return array Resultado ['success' => bool, 'message' => string]
- */
-function activar_usuario($pdo, $id) {
-    return actualizar_usuario($pdo, $id, ['activo' => ESTADO_ACTIVO]);
-}
-
-/**
- * Desactiva un usuario (no lo elimina, solo lo marca como inactivo)
- * 
- * @param PDO $pdo Conexión a BD
- * @param int $id ID del usuario
- * @return array Resultado ['success' => bool, 'message' => string]
- */
-function desactivar_usuario($pdo, $id) {
-    return actualizar_usuario($pdo, $id, ['activo' => ESTADO_INACTIVO]);
-}
-
-// ============================================================================
-// FUNCIONES DE ELIMINACIÓN (DELETE)
-// ============================================================================
-
-/**
- * Elimina un usuario de forma permanente
- * ADVERTENCIA: Esto es peligroso. Mejor usar desactivar_usuario()
- * 
- * @param PDO $pdo Conexión a BD
- * @param int $id ID del usuario
- * @return array Resultado ['success' => bool, 'message' => string]
- */
-function eliminar_usuario($pdo, $id) {
-    try {
-        // Verificar que no sea el usuario actual
-        if (isset($_SESSION['usuario_id']) && $_SESSION['usuario_id'] == $id) {
-            return [
-                'success' => false,
-                'message' => 'No puede eliminar su propio usuario.'
-            ];
-        }
-        
-        // Verificar que el usuario existe
-        $usuario = obtener_usuario_por_id($pdo, $id);
-        if (!$usuario) {
-            return [
-                'success' => false,
-                'message' => 'El usuario no existe.'
-            ];
-        }
-        
-        // Eliminar usuario
-        $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = ?");
+        // Verificar si tiene consultas
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM consultas WHERE usuario_id = ?");
         $stmt->execute([$id]);
-        
-        // Registrar en auditoría
-        if (isset($_SESSION['usuario_id'])) {
-            registrar_auditoria($pdo, $_SESSION['usuario_id'], 'ELIMINAR', 'usuarios', $id);
+        if ($stmt->fetchColumn() > 0) {
+            return false;
         }
         
-        log_mensaje("Usuario eliminado: {$usuario['nombre']} (ID: {$id})", 'warning');
+        // Verificar si tiene movimientos de inventario
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventario_movimientos WHERE usuario_id = ?");
+        $stmt->execute([$id]);
+        if ($stmt->fetchColumn() > 0) {
+            return false;
+        }
         
-        return [
-            'success' => true,
-            'message' => 'Usuario eliminado correctamente.'
-        ];
+        return true;
         
     } catch (PDOException $e) {
-        log_mensaje("Error al eliminar usuario: " . $e->getMessage(), 'error');
-        return [
-            'success' => false,
-            'message' => 'Error al eliminar el usuario. Puede tener registros relacionados.'
-        ];
-    }
-}
-
-// ============================================================================
-// FUNCIONES DE VALIDACIÓN
-// ============================================================================
-
-/**
- * Valida los datos de un usuario
- * 
- * @param array $datos Datos a validar
- * @param bool $es_nuevo Si es true, valida password (requerido solo en creación)
- * @return array Resultado ['success' => bool, 'message' => string]
- */
-function validar_datos_usuario($datos, $es_nuevo = false) {
-    // Validar nombre
-    if ($es_nuevo || isset($datos['nombre'])) {
-        if (empty($datos['nombre']) || strlen($datos['nombre']) < 3) {
-            return [
-                'success' => false,
-                'message' => 'El nombre debe tener al menos 3 caracteres.'
-            ];
-        }
-    }
-    
-    // Validar email
-    if ($es_nuevo || isset($datos['email'])) {
-        if (!validar_email($datos['email'])) {
-            return [
-                'success' => false,
-                'message' => 'El email no es válido.'
-            ];
-        }
-    }
-    
-    // Validar password (solo en creación)
-    if ($es_nuevo) {
-        if (empty($datos['password']) || strlen($datos['password']) < 6) {
-            return [
-                'success' => false,
-                'message' => 'La contraseña debe tener al menos 6 caracteres.'
-            ];
-        }
-    }
-    
-    // Validar rol
-    if ($es_nuevo || isset($datos['rol'])) {
-        $roles_validos = [ROL_ADMIN, ROL_MEDICO, ROL_ASISTENTE];
-        if (!in_array($datos['rol'], $roles_validos)) {
-            return [
-                'success' => false,
-                'message' => 'El rol seleccionado no es válido.'
-            ];
-        }
-    }
-    
-    return ['success' => true];
-}
-
-/**
- * Verifica si un email ya está registrado
- * 
- * @param PDO $pdo Conexión a BD
- * @param string $email Email a verificar
- * @param int|null $excluir_id ID de usuario a excluir (para actualizaciones)
- * @return bool True si el email existe
- */
-function email_usuario_existe($pdo, $email, $excluir_id = null) {
-    try {
-        $sql = "SELECT COUNT(*) FROM usuarios WHERE email = ?";
-        $params = [$email];
-        
-        if ($excluir_id !== null) {
-            $sql .= " AND id != ?";
-            $params[] = $excluir_id;
-        }
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        
-        return $stmt->fetchColumn() > 0;
-        
-    } catch (PDOException $e) {
-        log_mensaje("Error al verificar email: " . $e->getMessage(), 'error');
+        error_log("Error en puede_eliminar_usuario: " . $e->getMessage());
         return false;
     }
 }

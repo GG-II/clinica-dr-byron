@@ -647,3 +647,33 @@ body {
         padding: 20px 15px;
     }
 }
+
+/* Alerts permanentes que NO se cierran */
+.alert-permanent {
+    position: relative;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+}
+
+.alert-permanent.alert-warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    border-left: 4px solid #ffc107;
+}
+
+.alert-permanent.alert-danger {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #dc3545;
+    border-left: 4px solid #dc3545;
+}
+
+/* Evitar que JavaScript los cierre */
+.alert-permanent {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+    display: block !important;
+}
